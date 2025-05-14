@@ -1,0 +1,226 @@
+import pandas as pd
+import numpy as np
+import matplotlib.pyplot as plt
+import seaborn as sns
+import networkx as nx
+import nltk
+from collections import Counter
+from nltk.tokenize import word_tokenize
+from sklearn.model_selection import train_test_split
+from sklearn.feature_extraction.text import CountVectorizer
+from sklearn.naive_bayes import MultinomialNB
+from sklearn.metrics import accuracy_score, classification_report, confusion_matrix
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
+from sklearn.ensemble import RandomForestClassifier
+
+# Specify the file path
+file_path = '/content/sentimentdataset (1).csv'
+
+# Load the CSV file into a pandas DataFrame
+df = pd.read_csv(file_path)
+
+# Now you can work with the data in the DataFrame 'df'
+# For example, you can display the first few rows:
+df.head()
+
+df['Sentiment'] = df['Sentiment'].str.strip()
+df['Platform'] = df['Platform'].str.strip().str.capitalize()
+
+# Drop unnecessary columns
+df.drop(columns=['Unnamed: 0', 'Unnamed: 0.1'], inplace=True)
+
+# Check for missing values
+df.isnull().sum()
+
+sns.set_style("whitegrid")
+# Get the top 20 most used sentiments
+top_20_sentiments = df["Sentiment"].value_counts().nlargest(20).index
+filtered_df = df[df["Sentiment"].isin(top_20_sentiments)]
+
+# Plot
+sns.set_style("whitegrid")
+plt.figure(figsize=(10, 5))
+
+sns.countplot(x=filtered_df["Sentiment"], palette="viridis", order=top_20_sentiments)
+plt.title("Sentiment Distribution (Top 20)")
+plt.xticks(rotation=45, ha="right")  # Rotate labels for better visibility
+
+plt.show()
+
+plt.figure(figsize=(10, 5))
+
+sns.countplot(x=df["Platform"], palette="pastel")
+plt.title("Posts by Platform")
+plt.xticks(rotation=45, ha="right")
+
+plt.show()
+
+df_filtered = df[df['Sentiment'].isin(['Positive', 'Negative'])]
+
+plt.figure(figsize=(8, 6))
+sns.boxplot(x='Sentiment', y='Likes', data=df_filtered, palette={'Positive': 'green', 'Negative': 'red'})
+
+plt.title('Likes distribution per Sentiment')
+plt.xlabel('Sentiment')
+plt.ylabel('Likes')
+
+plt.show()
+
+plt.figure(figsize=(10,6))
+sns.lineplot(x=df['Hour'], y=df['Likes'], estimator='mean', ci=None)
+plt.title("Average Likes per hour")
+plt.xlabel("Hour")
+plt.ylabel("Average Likes per hour")
+plt.xticks(range(0, 24))
+plt.show()
+
+plt.figure(figsize=(8,6))
+sns.barplot(x=df['Platform'], y=df['Likes'], estimator='mean', palette="Set2")
+plt.title("Average Likes for each Plataform")
+plt.xlabel("Plataform")
+plt.ylabel("Average Likes")
+plt.show()
+
+plt.figure(figsize=(10, 5))
+
+sns.barplot(
+    x=filtered_df["Sentiment"],
+    y=filtered_df["Likes"],
+    palette="coolwarm",
+    order=top_20_sentiments
+)
+plt.title("Average Likes per Sentiment (Top 20)")
+plt.xticks(rotation=45, ha="right")
+
+plt.show()
+
+plt.figure(figsize=(8, 6))
+
+sns.scatterplot(x=df["Retweets"], y=df["Likes"], hue=df["Sentiment"], palette="Dark2", s=100)
+plt.title("Correlation between Retweets and Likes")
+
+plt.show()
+
+import nltk
+nltk.download('punkt')
+nltk.download('punkt_tab') # Download the punkt_tab resource
+# Create a NetworkX graph
+G = nx.Graph()
+
+# Tokenize words from the "Text" column and count occurrences
+word_sentiment_edges = []
+word_counts = Counter()
+
+for _, row in filtered_df.iterrows():
+    words = word_tokenize(row["Text"].lower())  # Tokenize and convert to lowercase
+    sentiment = row["Sentiment"]
+
+    for word in words:
+        if word.isalpha():  # Only keep alphabetic words (remove punctuation, numbers)
+            word_counts[word] += 1
+            word_sentiment_edges.append((word, sentiment))
+
+# Select the **most frequent words** to avoid clutter (Top 50 words)
+top_words = [word for word, count in word_counts.most_common(50)]
+
+# Add nodes (Sentiments and Words)
+for sentiment in top_20_sentiments:
+    G.add_node(sentiment, color="red", size=800)  # Sentiments in Red
+
+for word in top_words:
+    G.add_node(word, color="blue", size=300)  # Words in Blue
+
+# Add edges only if the word is in the top 50
+for word, sentiment in word_sentiment_edges:
+    if word in top_words:
+        G.add_edge(word, sentiment)
+
+# Extract node colors and sizes
+node_colors = [G.nodes[node]["color"] for node in G.nodes()]
+node_sizes = [G.nodes[node]["size"] for node in G.nodes()]
+
+# Draw the graph
+plt.figure(figsize=(12, 8))
+pos = nx.spring_layout(G, seed=42)  # Layout for visualization
+
+nx.draw(
+    G, pos, with_labels=True, node_color=node_colors,
+    node_size=node_sizes, edge_color="gray", font_size=10, font_weight="bold"
+)
+
+plt.title("Word-Sentiment Relationship Graph")
+plt.show()
+
+# Prepare data for modeling
+X = df['Text']
+y = df['Sentiment']
+
+# Split the data
+X_train, X_test, y_train, y_test = train_test_split(X, y, test_size=0.2, random_state=42)
+
+# Vectorize the text data
+vectorizer = CountVectorizer()
+X_train_vec = vectorizer.fit_transform(X_train)
+X_test_vec = vectorizer.transform(X_test)
+model = MultinomialNB()
+model.fit(X_train_vec, y_train)
+
+# Make predictions
+y_pred = model.predict(X_test_vec)
+# Accuracy score
+accuracy = accuracy_score(y_test, y_pred)
+print(f'Accuracy: {accuracy:.2f}')
+
+# Classification report
+print(classification_report(y_test, y_pred))
+
+# Confusion matrix
+conf_matrix = confusion_matrix(y_test, y_pred)
+sns.heatmap(conf_matrix, annot=True, fmt='d', cmap='Blues')
+plt.title('Confusion Matrix')
+plt.xlabel('Predicted')
+plt.ylabel('Actual')
+plt.show()
+
+from sklearn.feature_extraction.text import TfidfVectorizer
+from sklearn.linear_model import LogisticRegression
+from sklearn.metrics import accuracy_score, classification_report
+
+# TF-IDF Vectorization
+vectorizer = TfidfVectorizer()
+X_train_vec = vectorizer.fit_transform(X_train)
+X_test_vec = vectorizer.transform(X_test)
+
+# Train Logistic Regression
+model = LogisticRegression()
+model.fit(X_train_vec, y_train)
+
+# Evaluate
+y_pred = model.predict(X_test_vec)
+accuracy = accuracy_score(y_test, y_pred)
+print(f'Logistic Regression Accuracy: {accuracy:.2f}')
+print(classification_report(y_test, y_pred))
+X_test_vec = vectorizer.transform(X_test)
+
+# Train Logistic Regression
+model = LogisticRegression()
+model.fit(X_train_vec, y_train)
+
+# Evaluate
+y_pred = model.predict(X_test_vec)
+print(f'Logistic Regression Accuracy: {accuracy:.2f}')
+print(classification_report(y_test, y_pred))
+
+# Train Random Forest
+model = RandomForestClassifier(n_estimators=100, random_state=42)
+model.fit(X_train_vec, y_train)
+
+# Predictions
+y_pred = model.predict(X_test_vec)
+
+# Accuracy
+accuracy = accuracy_score(y_test, y_pred)
+print(f'Random Forest Accuracy: {accuracy:.2f}')
+# Classification report
+print(classification_report(y_test, y_pred))
